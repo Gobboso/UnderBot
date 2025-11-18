@@ -5,55 +5,65 @@ import fetch from "node-fetch";
 const app = express();
 app.use(cors());
 
-// === YouTube STREAM FIX ===
-// Forzar player=web → evita DRM
-const YT_PLAYER_URL =
-  "https://www.youtube.com/get_video_info?html5=1&c=WEB&cver=2.20210721.00.00&video_id=";
-
 app.get("/audio", async (req, res) => {
   const id = req.query.id;
   if (!id) return res.status(400).json({ error: "Video ID requerido" });
 
   try {
-    const infoURL = YT_PLAYER_URL + id;
+    const watchUrl = `https://www.youtube.com/watch?v=${id}`;
 
-    const response = await fetch(infoURL, {
+    const response = await fetch(watchUrl, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
       },
     });
 
-    const text = await response.text();
+    const html = await response.text();
 
-    if (!text.includes("adaptive_fmts")) {
-      return res
-        .status(500)
-        .json({ error: "YouTube no devolvió formatos (DRM o bloqueo)" });
+    // Buscar el objeto ytInitialPlayerResponse
+    const jsonMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
+
+    if (!jsonMatch) {
+      return res.status(500).json({ error: "No se encontró playerResponse" });
     }
 
-    const match = text.match(/https:[^,]+mime=audio[^,]+/g);
+    const player = JSON.parse(jsonMatch[1]);
 
-    if (!match || !match[0]) {
-      return res.status(500).json({ error: "No se encontró audio" });
+    // Extraer solo formatos de audio
+    const formats = [
+      ...(player.streamingData?.adaptiveFormats || []),
+      ...(player.streamingData?.formats || [])
+    ].filter(f => f.mimeType && f.mimeType.includes("audio"));
+
+    if (formats.length === 0) {
+      return res.status(500).json({ error: "No hay formatos de audio (DRM)" });
     }
 
-    let audioURL = decodeURIComponent(match[0]);
-    audioURL = audioURL.replace(/\\u0026/g, "&");
+    // Elegir el mejor audio disponible
+    const best = formats
+      .filter(f => f.bitrate)
+      .sort((a, b) => b.bitrate - a.bitrate)[0];
+
+    if (!best || !best.url) {
+      return res.status(500).json({ error: "No se pudo extraer URL" });
+    }
 
     return res.json({
-      url: audioURL,
-      title: "Audio Stream",
+      title: player?.videoDetails?.title || "Audio",
+      url: best.url
     });
+
   } catch (e) {
     return res.status(500).json({ error: e.toString() });
   }
 });
 
 app.get("/", (req, res) => {
-  res.send("YT proxy funcionando 😉");
+  res.send("YT proxy funcionando sin DRM 😉");
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Servidor activo en puerto " + PORT));
+app.listen(10000, () => {
+  console.log("Servidor activo en puerto 10000");
+});
