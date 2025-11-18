@@ -22,32 +22,105 @@ app.get("/audio", async (req, res) => {
 
     const html = await response.text();
 
-    // Buscar el objeto ytInitialPlayerResponse
-    const jsonMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.*?\});/);
+    // Función para extraer JSON balanceando llaves
+    const extractJSON = (text, pattern) => {
+      const match = text.match(pattern);
+      if (!match) return null;
+      
+      const startIndex = match.index + match[0].indexOf('{');
+      let braceCount = 0;
+      let inString = false;
+      let escapeNext = false;
+      
+      for (let i = startIndex; i < text.length; i++) {
+        const char = text[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (char === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (!inString) {
+          if (char === '{') braceCount++;
+          if (char === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+              const jsonStr = text.substring(startIndex, i + 1);
+              try {
+                return JSON.parse(jsonStr);
+              } catch (e) {
+                return null;
+              }
+            }
+          }
+        }
+      }
+      return null;
+    };
 
-    if (!jsonMatch) {
+    // Intentar múltiples patrones
+    let player = null;
+    const patterns = [
+      /var\s+ytInitialPlayerResponse\s*=\s*/,
+      /window\["ytInitialPlayerResponse"\]\s*=\s*/,
+      /ytInitialPlayerResponse\s*=\s*/
+    ];
+
+    for (const pattern of patterns) {
+      player = extractJSON(html, pattern);
+      if (player) break;
+    }
+
+    if (!player) {
       return res.status(500).json({ error: "No se encontró playerResponse" });
     }
 
-    const player = JSON.parse(jsonMatch[1]);
+    // Verificar que streamingData existe
+    if (!player.streamingData) {
+      return res.status(500).json({ 
+        error: "YouTube no devolvió formatos (DRM o bloqueo)" 
+      });
+    }
 
     // Extraer solo formatos de audio
     const formats = [
-      ...(player.streamingData?.adaptiveFormats || []),
-      ...(player.streamingData?.formats || [])
-    ].filter(f => f.mimeType && f.mimeType.includes("audio"));
+      ...(player.streamingData.adaptiveFormats || []),
+      ...(player.streamingData.formats || [])
+    ].filter(f => f && f.mimeType && f.mimeType.includes("audio"));
 
     if (formats.length === 0) {
-      return res.status(500).json({ error: "No hay formatos de audio (DRM)" });
+      return res.status(500).json({ 
+        error: "YouTube no devolvió formatos (DRM o bloqueo)" 
+      });
     }
 
-    // Elegir el mejor audio disponible
+    // Elegir el mejor audio disponible (con URL directa o signatureCipher)
     const best = formats
-      .filter(f => f.bitrate)
+      .filter(f => f.bitrate && (f.url || f.signatureCipher))
       .sort((a, b) => b.bitrate - a.bitrate)[0];
 
-    if (!best || !best.url) {
-      return res.status(500).json({ error: "No se pudo extraer URL" });
+    if (!best) {
+      return res.status(500).json({ 
+        error: "YouTube no devolvió formatos (DRM o bloqueo)" 
+      });
+    }
+
+    // Si tiene signatureCipher, necesitaríamos descifrarlo (complejo)
+    // Por ahora solo devolvemos URLs directas
+    if (!best.url) {
+      return res.status(500).json({ 
+        error: "Formato requiere descifrado (signatureCipher)" 
+      });
     }
 
     return res.json({
