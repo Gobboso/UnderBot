@@ -15,8 +15,17 @@ app.get("/audio", async (req, res) => {
     const response = await fetch(watchUrl, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
       },
     });
 
@@ -131,7 +140,22 @@ app.get("/audio", async (req, res) => {
       const match = text.match(pattern);
       if (!match) return null;
       
-      const startIndex = match.index + match[0].indexOf('{');
+      // Buscar el inicio del objeto JSON
+      let startIndex = match.index;
+      const matchStr = match[0];
+      const bracePos = matchStr.indexOf('{');
+      if (bracePos !== -1) {
+        startIndex += bracePos;
+      } else {
+        // Si no hay { en el match, buscar después
+        startIndex += matchStr.length;
+        while (startIndex < text.length && text[startIndex] !== '{') {
+          startIndex++;
+        }
+      }
+      
+      if (startIndex >= text.length) return null;
+      
       let braceCount = 0;
       let inString = false;
       let escapeNext = false;
@@ -172,17 +196,167 @@ app.get("/audio", async (req, res) => {
       return null;
     };
 
-    // Intentar múltiples patrones
+    // Buscar ytInitialPlayerResponse en múltiples formatos
     let player = null;
-    const patterns = [
-      /var\s+ytInitialPlayerResponse\s*=\s*/,
-      /window\["ytInitialPlayerResponse"\]\s*=\s*/,
-      /ytInitialPlayerResponse\s*=\s*/
+    
+    // Método 1: Buscar en var ytInitialPlayerResponse = {...}
+    const patterns1 = [
+      /var\s+ytInitialPlayerResponse\s*=\s*\{/,
+      /let\s+ytInitialPlayerResponse\s*=\s*\{/,
+      /const\s+ytInitialPlayerResponse\s*=\s*\{/,
     ];
-
-    for (const pattern of patterns) {
+    
+    for (const pattern of patterns1) {
       player = extractJSON(html, pattern);
       if (player) break;
+    }
+    
+    // Método 2: Buscar en window["ytInitialPlayerResponse"] = {...}
+    if (!player) {
+      const patterns2 = [
+        /window\["ytInitialPlayerResponse"\]\s*=\s*\{/,
+        /window\['ytInitialPlayerResponse'\]\s*=\s*\{/,
+        /window\.ytInitialPlayerResponse\s*=\s*\{/,
+      ];
+      for (const pattern of patterns2) {
+        player = extractJSON(html, pattern);
+        if (player) break;
+      }
+    }
+    
+    // Método 3: Buscar en scripts embebidos (ytInitialPlayerResponse = {...})
+    if (!player) {
+      const patterns3 = [
+        /ytInitialPlayerResponse\s*=\s*\{/,
+        /"ytInitialPlayerResponse"\s*:\s*\{/,
+      ];
+      for (const pattern of patterns3) {
+        player = extractJSON(html, pattern);
+        if (player) break;
+      }
+    }
+    
+    // Método 4: Buscar directamente el texto y extraer manualmente
+    if (!player) {
+      const searchText = 'ytInitialPlayerResponse';
+      let idx = html.indexOf(searchText);
+      while (idx !== -1 && !player) {
+        // Buscar la llave de apertura más cercana después del texto
+        let braceStart = html.indexOf('{', idx);
+        if (braceStart !== -1 && braceStart < idx + 200) {
+          // Extraer JSON manualmente desde esta posición
+          let braceCount = 0;
+          let inString = false;
+          let escapeNext = false;
+          
+          for (let i = braceStart; i < html.length && !player; i++) {
+            const char = html[i];
+            
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+            
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+            
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+            
+            if (!inString) {
+              if (char === '{') braceCount++;
+              if (char === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                  const jsonStr = html.substring(braceStart, i + 1);
+                  try {
+                    player = JSON.parse(jsonStr);
+                  } catch (e) {
+                    // Continuar buscando
+                  }
+                }
+              }
+            }
+          }
+        }
+        // Buscar siguiente ocurrencia
+        idx = html.indexOf(searchText, idx + 1);
+      }
+    }
+    
+    // Método 5: Buscar en scripts embebidos con regex más flexible
+    if (!player) {
+      // Buscar cualquier ocurrencia de ytInitialPlayerResponse seguido de = y {
+      const regex = /ytInitialPlayerResponse[^=]*=\s*\{/g;
+      let match;
+      while ((match = regex.exec(html)) !== null && !player) {
+        const braceStart = match.index + match[0].indexOf('{');
+        if (braceStart !== -1) {
+          // Extraer JSON manualmente desde esta posición
+          let braceCount = 0;
+          let inString = false;
+          let escapeNext = false;
+          
+          for (let i = braceStart; i < html.length && !player; i++) {
+            const char = html[i];
+            
+            if (escapeNext) {
+              escapeNext = false;
+              continue;
+            }
+            
+            if (char === '\\') {
+              escapeNext = true;
+              continue;
+            }
+            
+            if (char === '"' && !escapeNext) {
+              inString = !inString;
+              continue;
+            }
+            
+            if (!inString) {
+              if (char === '{') braceCount++;
+              if (char === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                  const jsonStr = html.substring(braceStart, i + 1);
+                  try {
+                    player = JSON.parse(jsonStr);
+                  } catch (e) {
+                    // Continuar buscando
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Método 6: Buscar en formato window.ytcfg o ytcfg
+    if (!player) {
+      const ytcfgMatch = html.match(/ytInitialData\s*=\s*(\{.+?\});/s);
+      if (ytcfgMatch) {
+        try {
+          const ytcfg = JSON.parse(ytcfgMatch[1]);
+          if (ytcfg.contents?.twoColumnWatchNextResults?.results?.results?.contents) {
+            const contents = ytcfg.contents.twoColumnWatchNextResults.results.results.contents;
+            for (const item of contents) {
+              if (item.playerOverlayRenderer?.playerOverlayRenderer?.playerResponse) {
+                player = item.playerOverlayRenderer.playerOverlayRenderer.playerResponse;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
     }
 
     if (!player) {
