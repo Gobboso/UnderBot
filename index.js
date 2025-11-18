@@ -22,6 +22,110 @@ app.get("/audio", async (req, res) => {
 
     const html = await response.text();
 
+    // Extraer URL del player.js
+    const extractPlayerScriptUrl = (html) => {
+      const patterns = [
+        /<script[^>]*src="([^"]*\/base\.js[^"]*)"/,
+        /"jsUrl":"([^"]*\/base\.js[^"]*)"/,
+        /"PLAYER_JS_URL":"([^"]*\/base\.js[^"]*)"/,
+      ];
+
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match) {
+          const url = match[1].replace(/\\\//g, '/');
+          return url.startsWith('http') ? url : `https://www.youtube.com${url}`;
+        }
+      }
+      return null;
+    };
+
+    // Extraer y ejecutar función de descifrado
+    const extractDecipherFunction = async (playerScriptUrl) => {
+      if (!playerScriptUrl) return null;
+
+      try {
+        const response = await fetch(playerScriptUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+        });
+        const script = await response.text();
+
+        // Buscar función de descifrado (múltiples patrones)
+        const patterns = [
+          /function\s+(\w+)\(a\)\{a=a\.split\(""\);[\s\S]{1,2000}return\s+a\.join\(""\)\}/,
+          /var\s+(\w+)\s*=\s*function\s*\(a\)\{a=a\.split\(""\);[\s\S]{1,2000}return\s+a\.join\(""\)\}/,
+        ];
+
+        for (const pattern of patterns) {
+          const match = script.match(pattern);
+          if (match) {
+            const funcName = match[1];
+            const funcBody = match[0];
+
+            // Buscar el mapeo de funciones (ej: var b={funcName:funcName})
+            const mappingMatch = script.match(
+              new RegExp(`var\\s+\\w+\\s*=\\s*\\{[^}]*"${funcName}"[^}]*\\}`)
+            );
+
+            if (mappingMatch) {
+              // Extraer operaciones del cuerpo de la función
+              const operations = [];
+              const lines = funcBody.split(';');
+
+              for (const line of lines) {
+                if (line.includes('.reverse()')) {
+                  operations.push({ type: 'reverse' });
+                } else if (line.includes('.splice(')) {
+                  const spliceMatch = line.match(/\.splice\((\d+)/);
+                  if (spliceMatch) {
+                    operations.push({ 
+                      type: 'splice', 
+                      index: parseInt(spliceMatch[1]) 
+                    });
+                  }
+                } else if (line.includes('a[0]') && line.includes('a[')) {
+                  const swapMatch = line.match(/a\[(\d+)\s*%\s*a\.length\]/);
+                  if (swapMatch) {
+                    operations.push({ 
+                      type: 'swap', 
+                      index: parseInt(swapMatch[1]) 
+                    });
+                  }
+                }
+              }
+
+              return operations.length > 0 ? operations : null;
+            }
+          }
+        }
+      } catch (e) {
+        // Error al obtener script
+      }
+      return null;
+    };
+
+    // Descifrar firma usando operaciones extraídas
+    const decipherSignature = (sig, operations) => {
+      if (!operations || operations.length === 0) return sig;
+
+      let result = sig.split('');
+      for (const op of operations) {
+        if (op.type === 'reverse') {
+          result = result.reverse();
+        } else if (op.type === 'splice') {
+          result = result.slice(op.index);
+        } else if (op.type === 'swap') {
+          const idx = op.index % result.length;
+          const temp = result[0];
+          result[0] = result[idx];
+          result[idx] = temp;
+        }
+      }
+      return result.join('');
+    };
+
     // Función para extraer JSON balanceando llaves
     const extractJSON = (text, pattern) => {
       const match = text.match(pattern);
@@ -115,17 +219,51 @@ app.get("/audio", async (req, res) => {
       });
     }
 
-    // Si tiene signatureCipher, necesitaríamos descifrarlo (complejo)
-    // Por ahora solo devolvemos URLs directas
-    if (!best.url) {
+    let finalUrl = best.url;
+
+    // Si tiene signatureCipher, parsearlo y construir URL
+    if (!finalUrl && best.signatureCipher) {
+      try {
+        // Parsear signatureCipher (formato: "url=...&sp=...&s=...")
+        const params = new URLSearchParams(best.signatureCipher);
+        const baseUrl = params.get('url');
+        const signature = params.get('s');
+        const sp = params.get('sp') || 'signature';
+
+        if (!baseUrl) {
+          return res.status(500).json({ 
+            error: "No se pudo extraer URL base de signatureCipher" 
+          });
+        }
+
+        // Intentar obtener función de descifrado
+        const playerScriptUrl = extractPlayerScriptUrl(html);
+        let decipheredSig = signature;
+
+        if (signature && playerScriptUrl) {
+          const operations = await extractDecipherFunction(playerScriptUrl);
+          if (operations) {
+            decipheredSig = decipherSignature(signature, operations);
+          }
+        }
+
+        finalUrl = `${baseUrl}&${sp}=${encodeURIComponent(decipheredSig)}`;
+      } catch (e) {
+        return res.status(500).json({ 
+          error: `Error procesando signatureCipher: ${e.message}` 
+        });
+      }
+    }
+
+    if (!finalUrl) {
       return res.status(500).json({ 
-        error: "Formato requiere descifrado (signatureCipher)" 
+        error: "No se pudo obtener URL del formato" 
       });
     }
 
     return res.json({
       title: player?.videoDetails?.title || "Audio",
-      url: best.url
+      url: finalUrl
     });
 
   } catch (e) {
