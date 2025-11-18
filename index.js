@@ -1,70 +1,38 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
+import { spawn } from "child_process";
 
 const app = express();
 app.use(cors());
 
-// NEW: endpoint moderno que evita DRM (innerTube web client)
-const PLAYER_API =
-  "https://www.youtube.com/youtubei/v1/player?key=AIzaSyC7YkP2…"; // clave oficial anonima pública
+app.get("/proxy", async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).json({ error: "Missing url" });
 
-const bodyBase = {
-  context: {
-    client: {
-      clientName: "WEB",
-      clientVersion: "2.20230101.00.00"
+  // Ejecutar yt-dlp para obtener el audio
+  const ytdlp = spawn("yt-dlp", [
+    "-f", "bestaudio",
+    "-o", "-",
+    url
+  ]);
+
+  // headers correctos para audio
+  res.setHeader("Content-Type", "audio/mpeg");
+
+  ytdlp.stdout.pipe(res);
+
+  ytdlp.stderr.on("data", (data) => {
+    console.error("yt-dlp error:", data.toString());
+  });
+
+  ytdlp.on("close", (code) => {
+    if (code !== 0) {
+      console.error("yt-dlp exited with code", code);
+      res.end();
     }
-  }
-};
-
-app.get("/audio", async (req, res) => {
-  const id = req.query.id;
-  if (!id) {
-    return res.status(400).json({ error: "Video ID requerido" });
-  }
-
-  try {
-    const response = await fetch(PLAYER_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0"
-      },
-      body: JSON.stringify({
-        ...bodyBase,
-        videoId: id
-      })
-    });
-
-    const json = await response.json();
-
-    const fmts =
-      json.streamingData?.adaptiveFormats?.filter((f) =>
-        f.mimeType.includes("audio")
-      ) || [];
-
-    if (!fmts.length) {
-      return res
-        .status(500)
-        .json({ error: "YouTube bloqueó el audio o devolvió DRM" });
-    }
-
-    const best = fmts.sort((a, b) => b.bitrate - a.bitrate)[0];
-
-    return res.json({
-      url: best.url,
-      title: json.videoDetails?.title || "Audio Stream"
-    });
-  } catch (e) {
-    return res.status(500).json({ error: e.toString() });
-  }
+  });
 });
 
-app.get("/", (req, res) => {
-  res.send("YT proxy funcionando 😉");
+app.listen(10000, () => {
+  console.log("YT Proxy running on port 10000");
 });
-
-// *** IMPORTANTE: USAR PUERTO DE RENDER ***
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor activo en puerto " + PORT));
