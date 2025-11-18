@@ -4,47 +4,59 @@ import fetch from "node-fetch";
 
 const app = express();
 app.use(cors());
-const PORT = process.env.PORT || 3000;
 
-const YT_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Accept": "*/*",
-  "Connection": "keep-alive"
-};
+// === YouTube STREAM FIX ===
+// Forzar player=web → evita DRM
+const YT_PLAYER_URL =
+  "https://www.youtube.com/get_video_info?html5=1&c=WEB&cver=2.20210721.00.00&video_id=";
 
-// ----------- PROXY PARA YT-DLP --------------
-app.get("/yt", async (req, res) => {
-  let url = req.query.url;
-  if (!url) return res.status(400).json({ error: "Falta ?url=" });
+app.get("/audio", async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Video ID requerido" });
 
   try {
-    const response = await fetch(url, { headers: YT_HEADERS });
+    const infoURL = YT_PLAYER_URL + id;
 
-    let contentType = response.headers.get("content-type") || "text/plain";
-    res.setHeader("content-type", contentType);
+    const response = await fetch(infoURL, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
 
-    // devolvemos tal cual pero reescribimos URLs internas para evitar que yt-dlp llame directo a youtube
-    let data = await response.text();
+    const text = await response.text();
 
-    data = data
-      .replace(/https:\/\/rr\d*---/g, "https://yt-proxy.onrender.com/yt?url=https://rr")
-      .replace(/https:\/\/redirector\.googlevideo\.com/g, "https://yt-proxy.onrender.com/yt?url=https://redirector.googlevideo.com")
-      .replace(/https:\/\/youtube\.com/g, "https://yt-proxy.onrender.com/yt?url=https://youtube.com")
-      .replace(/https:\/\/www\.youtube\.com/g, "https://yt-proxy.onrender.com/yt?url=https://www.youtube.com");
+    if (!text.includes("adaptive_fmts")) {
+      return res
+        .status(500)
+        .json({ error: "YouTube no devolvió formatos (DRM o bloqueo)" });
+    }
 
-    res.send(data);
-  } catch (err) {
-    res.status(500).json({ error: "Proxy fail", details: err.message });
+    // Buscar la mejor URL de audio
+    const match = text.match(/https:[^,]+mime=audio[^,]+/g);
+
+    if (!match || !match[0]) {
+      return res.status(500).json({ error: "No se encontró audio" });
+    }
+
+    let audioURL = decodeURIComponent(match[0]);
+
+    // Limpiar parámetros rotos
+    audioURL = audioURL.replace(/\\u0026/g, "&");
+
+    return res.json({
+      url: audioURL,
+      title: "Audio Stream",
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.toString() });
   }
 });
 
-// Home
 app.get("/", (req, res) => {
-  res.send("YT Proxy activo");
+  res.send("YT proxy funcionando 😉");
 });
 
-app.listen(PORT, () => {
-  console.log("YT Proxy en el puerto " + PORT);
-});
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log("Servidor activo en puerto " + PORT));
