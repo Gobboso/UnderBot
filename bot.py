@@ -34,7 +34,7 @@ with open("radios.json", "r", encoding="utf-8") as file:
 
 YTDL_OPTS = {
     "format": "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[ext=webm]/best[ext=m4a]/best",
-    "quiet": True,
+    "quiet": False,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
