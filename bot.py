@@ -33,18 +33,18 @@ with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
 YTDL_FORMAT_PIPELINE = [
-    "bestaudio[acodec^=opus][abr<=160000]",
-    "bestaudio[acodec^=opus]",
+    "bestaudio[acodec=opus]/bestaudio[acodec^=opus]",
+    "bestaudio[acodec=m4a]/bestaudio[ext=m4a]",
+    "96",
+    "95",
+    "94",
+    "93",
+    "92",
+    "91",
     "bestaudio/best",
-    "bestvideo[height<=720][ext=mp4]+bestaudio/best",
-    "96/mp4",
-    "95/mp4",
-    "94/mp4",
-    "93/mp4",
-    "92/mp4",
-    "91/mp4",
-    "best[ext=mp4]/best"
+    "best"
 ]
+
 BASE_YTDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
@@ -55,23 +55,32 @@ BASE_YTDL_OPTS = {
     "noplaylist": True,
     "source_address": "0.0.0.0",
     "cookiefile": "cookies.txt",
-    "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"],
+            "player_skip": ["configs"]
+        }
+    },
     "prefer_insecure": True,
     "force_ip": "0.0.0.0",
 }
+
 FFMPEG_PROTOCOLS = "file,http,https,tcp,tls"
 FFMPEG_BASE_BEFORE = (
     "-nostdin -loglevel warning "
     "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
     "-reconnect_at_eof 1 -reconnect_on_network_error 1 "
     "-rw_timeout 15000000 "
-    f'-protocol_whitelist "{FFMPEG_PROTOCOLS}"'
+    f'-protocol_whitelist \"{FFMPEG_PROTOCOLS}\"'
 )
-FFMPEG_BEFORE_OPTS = FFMPEG_BASE_BEFORE
+
+FFMPEG_HLS_BEFORE = f"{FFMPEG_BASE_BEFORE} -allowed_extensions ALL"
+FFMPEG_BEFORE_OPTS = FFMPEG_HLS_BEFORE
+
 FFMPEG_OPUS_OPTS = "-vn -compression_level 10 -loglevel warning"
 FFMPEG_PCM_OPTS = "-vn -af aresample=48000:async=1:first_pts=0 -threads 1 -loglevel warning"
-FFMPEG_HLS_BEFORE = f"{FFMPEG_BASE_BEFORE} -allowed_extensions ALL"
 FFMPEG_HLS_OPTS = "-vn -loglevel warning"
+
 YTDL_SEMAPHORE = asyncio.Semaphore(2)
 IDLE_TIMEOUT = 300
 
