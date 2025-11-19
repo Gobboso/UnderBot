@@ -47,9 +47,8 @@ EXTRACTION_STRATEGIES = [
         "opts": {
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
-            "format": "worst[ext=mp4]",
         },
-        "formats": [None],
+        "formats": ["worst[ext=mp4]", "91"],
     },
 ]
 
@@ -150,7 +149,11 @@ async def run_blocking(func, *args, **kwargs):
 def _extract_info(query, format_string=None, extra_opts=None):
     opts = BASE_YTDL_OPTS.copy()
     if extra_opts:
-        opts.update(extra_opts)
+        for key, value in extra_opts.items():
+            if key == "extractor_args" and key in opts:
+                opts[key].update(value)
+            else:
+                opts[key] = value
     if format_string:
         opts["format"] = format_string
     with yt_dlp.YoutubeDL(opts) as ydl:
