@@ -146,10 +146,17 @@ async def extract_ytdl_info(query):
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     try:
         info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
-        # NO guardes la URL, devuelve toda la info
-        return info, info.get("title", "Audio")
+        return info.get("url"), info.get("title", "Audio")
     except Exception as error:
         print(f"Error obteniendo audio: {error}")
+        if title_hint:
+            try:
+                alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
+                entries = alt_info.get("entries")
+                if entries and entries[0].get("id") != video_id:
+                    return await obtener_audio_reproducible(entries[0]["id"])
+            except Exception:
+                pass
         return None, None
 
 
@@ -184,14 +191,12 @@ async def fetch_playlist_entries(raw_url):
 
 
 async def build_audio_source(stream_url):
-    # HLS streams (m3u8) no soportan probe
     if ".m3u8" in stream_url or "manifest.googlevideo.com" in stream_url:
         return FFmpegPCMAudio(
             stream_url,
             before_options=FFMPEG_BEFORE_OPTS,
             options=FFMPEG_PCM_OPTS,
         )
-    # Audio directo sí puede usar Opus
     try:
         return await FFmpegOpusAudio.from_probe(
             stream_url,
@@ -238,14 +243,13 @@ async def play_next(ctx):
 
     stream_url = item.get("source")
     if not stream_url:
-        info, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
-        if not info:
+        stream_url, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
+        if not stream_url:
             await ctx.send("❌ Error con la canción, saltando.")
             return await play_next(ctx)
-        stream_url = info.get("url")  # Extrae URL fresca
 
     try:
-        audio_source = await build_audio_source(stream_url, info)
+        audio_source = await build_audio_source(stream_url)
     except Exception as error:
         await ctx.send(f"Error al preparar audio: `{error}`")
         return await play_next(ctx)
@@ -302,12 +306,11 @@ async def play(ctx, *, search: str):
             return await ctx.send(str(error))
         if playlist_entries:
             first = playlist_entries[0]
-            stream_url, title = await obtener_audio_reproducible(first["id"], title_hint=first["title"])
-            if not stream_url:
+            first_url, first_title = await obtener_audio_reproducible(first["id"], title_hint=first["title"])
+            if not first_url:
                 return await ctx.send("❌ No pude preparar la primera canción.")
-            first["source"] = stream_url
-            if title:
-                first["title"] = title
+            if first_title:
+                first["title"] = first_title
             async with get_lock(gid):
                 get_queue(gid).extend(playlist_entries)
                 cancel_idle_timer(gid)
@@ -333,7 +336,7 @@ async def play(ctx, *, search: str):
 
     display_title = resolved_title or title or query
     async with get_lock(gid):
-        get_queue(gid).append({"id": video_id, "title": display_title, "source": stream_url})
+        get_queue(gid).append({"id": video_id, "title": display_title, "source": None})
         cancel_idle_timer(gid)
         if not get_playing(gid):
             bot.loop.create_task(play_next(ctx))
