@@ -47,8 +47,9 @@ EXTRACTION_STRATEGIES = [
         "opts": {
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
+            "format": "worst[ext=mp4]",
         },
-        "formats": ["96", "95", "94", "93", "92", "91", "bestaudio", "best"],
+        "formats": [None],
     },
 ]
 
