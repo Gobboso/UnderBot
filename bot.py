@@ -42,8 +42,18 @@ YTDL_OPTS = {
     "extract_flat": False,
     "cachedir": False,
     "source_address": "0.0.0.0",
-    "extractor_args": {"youtube": {"player_client": "default"}},
+    "cookiefile": "cookies.txt",
+    
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["web", "android"],
+        }
+    },
+
+    "prefer_insecure": True,
+    "force_ip": "0.0.0.0",
 }
+
 FFMPEG_PROTOCOLS = "file,http,https,tcp,tls,crypto,data"
 FFMPEG_BASE_BEFORE = (
     "-nostdin -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
