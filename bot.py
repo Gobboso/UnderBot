@@ -43,10 +43,10 @@ BASE_YTDL_OPTS = {
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "web+cookies",
+        "name": "tv_embedded",
         "opts": {
             "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
+            "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
         },
         "formats": [None],
     },
