@@ -44,23 +44,34 @@ BASE_YTDL_OPTS = {
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "android_ipv6_direct",
+        "name": "web_ipv6",
+        "opts": {
+            "cookiefile": "cookies.txt",
+            # El cliente 'web' suele tener siempre archivos .webm/.m4a disponibles
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
+        },
+        # Pedimos explícitamente extensiones de archivo, NO protocolos
+        "formats": ["bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio"], 
+    },
+    {
+        "name": "android_ipv6_backup",
         "opts": {
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["android"]}},
         },
-        # "protocol^=http" prohíbe m3u8 y fuerza descarga directa (evita error 403)
-        "formats": ["bestaudio[protocol^=http]/bestaudio"], 
+        # Si cae aquí, forzamos que no sea m3u8
+        "formats": ["bestaudio[protocol^=http]"],
     },
 ]
 
 FFMPEG_BEFORE_OPTS = (
-    '-nostdin -reconnect 1 -reconnect_streamed 1 '
-    '-reconnect_delay_max 5 -rw_timeout 20000000 '
-    '-protocol_whitelist "file,http,https,tcp,tls,crypto" '
+    '-nostdin '
+    '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
+    '-rw_timeout 20000000 '
+    # Quitamos el protocol_whitelist exagerado que a veces causa problemas con https
+    '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" '
     '-http_persistent 0'
 )
-# He eliminado la línea '-user_agent ...' para evitar conflictos de huella digital
 
 FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
 FFMPEG_PCM_OPTS = "-vn -loglevel warning"
