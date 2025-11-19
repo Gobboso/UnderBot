@@ -32,15 +32,20 @@ if not TOKEN:
 with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
-YTDL_OPTS = {
-    "format": "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[ext=webm]/best[ext=m4a]/best",
-    "quiet": False,
+BASE_YTDL_OPTS = {
+    "quiet": True,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
     "cookiefile": "cookies.txt",
     "extractor_args": {"youtube": {"player_client": ["web"]}},
 }
+
+FORMAT_ATTEMPTS = [
+    "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+    "bestaudio/best",
+    "96/95/94/93/92/91",
+]
 
 FFMPEG_BEFORE_OPTS = (
     '-nostdin -reconnect 1 -reconnect_streamed 1 '
@@ -134,49 +139,52 @@ async def run_blocking(func, *args, **kwargs):
     return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
 
-def _extract_info(query):
-    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
+def _extract_info(query, format_string=None):
+    opts = BASE_YTDL_OPTS.copy()
+    if format_string:
+        opts["format"] = format_string
+    with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(query, download=False)
 
 
-async def extract_ytdl_info(query):
+async def extract_ytdl_info(query, format_string=None):
     async with YTDL_SEMAPHORE:
-        return await run_blocking(_extract_info, query)
+        return await run_blocking(_extract_info, query, format_string)
 
 
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
-    try:
-        info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
-        if not info or not isinstance(info, dict):
-            print(f"Error: info no es dict, es {type(info)}")
-            return None, None
-        
-        url = info.get("url")
-        title = info.get("title", "Audio")
-        
-        if not url:
-            print(f"Error: no hay URL en info. Keys: {list(info.keys())[:10]}")
-            return None, None
+    url_base = f"https://www.youtube.com/watch?v={video_id}"
+    
+    for fmt in FORMAT_ATTEMPTS:
+        try:
+            info = await extract_ytdl_info(url_base, format_string=fmt)
+            if not info or not isinstance(info, dict):
+                continue
             
-        return url, title
-    except Exception as error:
-        print(f"Error obteniendo audio: {error}")
-        import traceback
-        traceback.print_exc()
-        if title_hint:
-            try:
-                alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
-                if not isinstance(alt_info, dict):
-                    return None, None
+            url = info.get("url")
+            title = info.get("title", "Audio")
+            
+            if url:
+                return url, title
+        except Exception as error:
+            print(f"Formato {fmt} falló: {error}")
+            continue
+    
+    print(f"Todos los formatos fallaron para {video_id}")
+    if title_hint:
+        try:
+            alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
+            if isinstance(alt_info, dict):
                 entries = alt_info.get("entries", [])
                 if entries and isinstance(entries[0], dict):
                     alt_id = entries[0].get("id")
                     if alt_id and alt_id != video_id:
                         alt_title = entries[0].get("title")
                         return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
-            except Exception as e2:
-                print(f"Error en búsqueda alternativa: {e2}")
-        return None, None
+        except Exception as e2:
+            print(f"Error en búsqueda alternativa: {e2}")
+    
+    return None, None
 
 
 async def buscar_en_youtube(query):
