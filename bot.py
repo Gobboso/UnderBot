@@ -39,14 +39,29 @@ BASE_YTDL_OPTS = {
     "noplaylist": True,
     "geo_bypass": True,
     "nocheckcertificate": True,
+    "username": "oauth2",  # <--- AGREGAR ESTO
+    "password": "",        # <--- AGREGAR ESTO
 }
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "tv_embedded",
+        "name": "oauth2_android",
         "opts": {
-            "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
+            # Quitamos "cookiefile" para forzar la autenticación limpia por OAuth2
+            "username": "oauth2",
+            "password": "",
+            # "android" suele funcionar mejor que "tv_embedded" actualmente
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        },
+        "formats": [None],
+    },
+    {
+        "name": "oauth2_web",
+        "opts": {
+            "username": "oauth2",
+            "password": "",
+            # Fallback al cliente web normal si android falla
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
         "formats": [None],
     },
