@@ -42,9 +42,12 @@ YTDL_OPTS = {
 }
 
 FFMPEG_BEFORE_OPTS = (
-    "-nostdin -reconnect 1 -reconnect_streamed 1 "
-    "-reconnect_delay_max 5 -rw_timeout 15000000"
+    '-nostdin -reconnect 1 -reconnect_streamed 1 '
+    '-reconnect_delay_max 5 -rw_timeout 15000000 '
+    '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" '
+    '-headers "Referer: https://www.youtube.com/"'
 )
+
 FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
 FFMPEG_PCM_OPTS = "-vn -loglevel warning"
 
@@ -143,17 +146,10 @@ async def extract_ytdl_info(query):
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     try:
         info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
-        return info.get("url"), info.get("title", "Audio")
+        # NO guardes la URL, devuelve toda la info
+        return info, info.get("title", "Audio")
     except Exception as error:
         print(f"Error obteniendo audio: {error}")
-        if title_hint:
-            try:
-                alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
-                entries = alt_info.get("entries")
-                if entries and entries[0].get("id") != video_id:
-                    return await obtener_audio_reproducible(entries[0]["id"])
-            except Exception:
-                pass
         return None, None
 
 
@@ -242,13 +238,14 @@ async def play_next(ctx):
 
     stream_url = item.get("source")
     if not stream_url:
-        stream_url, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
-        if not stream_url:
+        info, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
+        if not info:
             await ctx.send("❌ Error con la canción, saltando.")
             return await play_next(ctx)
+        stream_url = info.get("url")  # Extrae URL fresca
 
     try:
-        audio_source = await build_audio_source(stream_url)
+        audio_source = await build_audio_source(stream_url, info)
     except Exception as error:
         await ctx.send(f"Error al preparar audio: `{error}`")
         return await play_next(ctx)
