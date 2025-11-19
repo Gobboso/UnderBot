@@ -33,13 +33,12 @@ with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
 YTDL_OPTS = {
-    "format": "best",
-    "quiet": False,
+    "format": "96/95/94/93/92/91/251/250/249/140/bestaudio/best",
+    "quiet": True,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
     "cookiefile": "cookies.txt",
-    "extractor_args": {"youtube": {"player_client": ["web"]}},  # Cambiado de android a web
 }
 
 FFMPEG_BEFORE_OPTS = (
