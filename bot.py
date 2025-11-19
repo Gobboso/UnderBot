@@ -44,23 +44,15 @@ BASE_YTDL_OPTS = {
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "web_ipv6",
+        "name": "ios_hls_allowed",
         "opts": {
             "cookiefile": "cookies.txt",
-            # El cliente 'web' suele tener siempre archivos .webm/.m4a disponibles
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
+            # El cliente iOS es el más robusto para IPs de servidor (AWS)
+            "extractor_args": {"youtube": {"player_client": ["ios"]}},
         },
-        # Pedimos explícitamente extensiones de archivo, NO protocolos
-        "formats": ["bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio"], 
-    },
-    {
-        "name": "android_ipv6_backup",
-        "opts": {
-            "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["android"]}},
-        },
-        # Si cae aquí, forzamos que no sea m3u8
-        "formats": ["bestaudio[protocol^=http]"],
+        # IMPORTANTE: Quitamos los filtros estrictos. 
+        # Si YouTube solo nos da m3u8, aceptamos m3u8.
+        "formats": ["bestaudio/best"], 
     },
 ]
 
@@ -68,9 +60,9 @@ FFMPEG_BEFORE_OPTS = (
     '-nostdin '
     '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
     '-rw_timeout 20000000 '
-    # Quitamos el protocol_whitelist exagerado que a veces causa problemas con https
-    '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" '
+    '-protocol_whitelist "file,http,https,tcp,tls,crypto" '
     '-http_persistent 0'
+    # HE BORRADO LA LÍNEA DE USER-AGENT PARA EVITAR EL ERROR 403
 )
 
 FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
