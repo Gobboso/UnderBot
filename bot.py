@@ -38,32 +38,18 @@ BASE_YTDL_OPTS = {
     "skip_download": True,
     "noplaylist": True,
     "geo_bypass": True,
-    "nocheckcertificate": True,
-    "username": "oauth2",  # <--- AGREGAR ESTO
-    "password": "",        # <--- AGREGAR ESTO
+    "nocheckcertificate": True
 }
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "oauth2_android",
+        "name": "ios_client",
         "opts": {
-            # Quitamos "cookiefile" para forzar la autenticación limpia por OAuth2
-            "username": "oauth2",
-            "password": "",
-            # "android" suele funcionar mejor que "tv_embedded" actualmente
-            "extractor_args": {"youtube": {"player_client": ["android"]}},
+            "cookiefile": "cookies.txt",
+            # El cliente iOS suele ser menos estricto con la verificación de bots
+            "extractor_args": {"youtube": {"player_client": ["ios"]}},
         },
-        "formats": [None],
-    },
-    {
-        "name": "oauth2_web",
-        "opts": {
-            "username": "oauth2",
-            "password": "",
-            # Fallback al cliente web normal si android falla
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
-        },
-        "formats": [None],
+        "formats": ["bestaudio/best"],
     },
 ]
 
@@ -71,10 +57,10 @@ FFMPEG_BEFORE_OPTS = (
     '-nostdin -reconnect 1 -reconnect_streamed 1 '
     '-reconnect_delay_max 5 -rw_timeout 15000000 '
     '-protocol_whitelist "file,http,https,tcp,tls,crypto" '
-    '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" '
-    '-headers "Referer: https://www.youtube.com/" '
+    '-headers "Referer: https://www.youtube.com/" ' 
     '-http_persistent 0'
 )
+# He eliminado la línea '-user_agent ...' para evitar conflictos de huella digital
 
 FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
 FFMPEG_PCM_OPTS = "-vn -loglevel warning"
