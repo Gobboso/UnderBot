@@ -147,15 +147,21 @@ async def extract_ytdl_info(query):
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     try:
         info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
+        if not isinstance(info, dict):
+            return None, None
         return info.get("url"), info.get("title", "Audio")
     except Exception as error:
         print(f"Error obteniendo audio: {error}")
         if title_hint:
             try:
                 alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
+                if not isinstance(alt_info, dict):
+                    return None, None
                 entries = alt_info.get("entries")
                 if entries and entries[0].get("id") != video_id:
-                    return await obtener_audio_reproducible(entries[0]["id"])
+                    alt_id = entries[0].get("id")
+                    alt_title = entries[0].get("title")
+                    return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
             except Exception:
                 pass
         return None, None
