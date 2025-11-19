@@ -48,23 +48,7 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
-        "formats": ["251/250/249/140", "bestaudio", "93/92/91"],
-    },
-    {
-        "name": "android+cookies",
-        "opts": {
-            "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["android"]}},
-        },
-        "formats": ["bestaudio", "93/92/91"],
-    },
-    {
-        "name": "ios+cookies",
-        "opts": {
-            "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["ios"]}},
-        },
-        "formats": ["bestaudio", "93/92/91"],
+        "formats": ["93", "92", "91"],
     },
 ]
 
