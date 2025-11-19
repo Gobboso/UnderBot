@@ -34,7 +34,7 @@ with open("radios.json", "r", encoding="utf-8") as file:
 
 YTDL_OPTS = {
     "format": "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best[ext=webm]/best[ext=m4a]/best",
-    "quiet": True,
+    "quiet": False,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
@@ -147,23 +147,35 @@ async def extract_ytdl_info(query):
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     try:
         info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
-        if not isinstance(info, dict):
+        if not info or not isinstance(info, dict):
+            print(f"Error: info no es dict, es {type(info)}")
             return None, None
-        return info.get("url"), info.get("title", "Audio")
+        
+        url = info.get("url")
+        title = info.get("title", "Audio")
+        
+        if not url:
+            print(f"Error: no hay URL en info. Keys: {list(info.keys())[:10]}")
+            return None, None
+            
+        return url, title
     except Exception as error:
         print(f"Error obteniendo audio: {error}")
+        import traceback
+        traceback.print_exc()
         if title_hint:
             try:
                 alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
                 if not isinstance(alt_info, dict):
                     return None, None
-                entries = alt_info.get("entries")
-                if entries and entries[0].get("id") != video_id:
+                entries = alt_info.get("entries", [])
+                if entries and isinstance(entries[0], dict):
                     alt_id = entries[0].get("id")
-                    alt_title = entries[0].get("title")
-                    return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
-            except Exception:
-                pass
+                    if alt_id and alt_id != video_id:
+                        alt_title = entries[0].get("title")
+                        return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
+            except Exception as e2:
+                print(f"Error en búsqueda alternativa: {e2}")
         return None, None
 
 
