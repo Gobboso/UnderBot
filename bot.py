@@ -38,7 +38,8 @@ BASE_YTDL_OPTS = {
     "skip_download": True,
     "noplaylist": True,
     "geo_bypass": True,
-    "nocheckcertificate": True
+    "nocheckcertificate": True,
+    "source_address": "::",  # <--- LA MAGIA: Fuerza a salir por IPv6
 }
 
 EXTRACTION_STRATEGIES = [
