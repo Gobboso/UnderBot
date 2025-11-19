@@ -36,6 +36,14 @@ YTDL_FORMAT_PIPELINE = [
     "bestaudio[acodec^=opus][abr<=160000]",
     "bestaudio[acodec^=opus]",
     "bestaudio/best",
+    "bestvideo[height<=720][ext=mp4]+bestaudio/best",
+    "96/mp4",
+    "95/mp4",
+    "94/mp4",
+    "93/mp4",
+    "92/mp4",
+    "91/mp4",
+    "best[ext=mp4]/best"
 ]
 BASE_YTDL_OPTS = {
     "quiet": True,
