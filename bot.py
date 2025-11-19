@@ -188,6 +188,14 @@ async def fetch_playlist_entries(raw_url):
 
 
 async def build_audio_source(stream_url):
+    # HLS streams (m3u8) no soportan probe
+    if ".m3u8" in stream_url or "manifest.googlevideo.com" in stream_url:
+        return FFmpegPCMAudio(
+            stream_url,
+            before_options=FFMPEG_BEFORE_OPTS,
+            options=FFMPEG_PCM_OPTS,
+        )
+    # Audio directo sí puede usar Opus
     try:
         return await FFmpegOpusAudio.from_probe(
             stream_url,
