@@ -48,7 +48,7 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
-        "formats": ["worst[ext=mp4]", "91"],
+        "formats": ["91", "92", "93", "worst"],
     },
 ]
 
@@ -187,6 +187,8 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
                         return url
                     print(f"✓ Éxito: {strategy_name} + {fmt}")
                     return url, title
+                else:
+                    print(f"  -> Formato {fmt}: sin URL. Keys: {list(info.keys())[:5]}")
             except Exception:
                 continue
     
