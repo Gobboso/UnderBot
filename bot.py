@@ -48,7 +48,7 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
-        "formats": ["251/250/249/140", "bestaudio", "91"],
+        "formats": ["251/250/249/140", "bestaudio", "93/92/91"],
     },
     {
         "name": "android+cookies",
@@ -56,7 +56,7 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["android"]}},
         },
-        "formats": ["bestaudio", "91"],
+        "formats": ["bestaudio", "93/92/91"],
     },
     {
         "name": "ios+cookies",
@@ -64,15 +64,17 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["ios"]}},
         },
-        "formats": ["bestaudio", "91"],
+        "formats": ["bestaudio", "93/92/91"],
     },
 ]
 
 FFMPEG_BEFORE_OPTS = (
     '-nostdin -reconnect 1 -reconnect_streamed 1 '
     '-reconnect_delay_max 5 -rw_timeout 15000000 '
+    '-protocol_whitelist "file,http,https,tcp,tls,crypto" '
     '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" '
-    '-headers "Referer: https://www.youtube.com/"'
+    '-headers "Referer: https://www.youtube.com/" '
+    '-http_persistent 0'
 )
 
 FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
