@@ -33,17 +33,13 @@ with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
 YTDL_FORMAT_PIPELINE = [
-    "bestaudio[acodec=opus]/bestaudio[acodec^=opus]",
-    "bestaudio[acodec=m4a]/bestaudio[ext=m4a]",
-    "96",
-    "95",
-    "94",
-    "93",
-    "92",
-    "91",
-    "bestaudio/best",
-    "best"
+    "bestaudio[acodec^=opus]/bestaudio",
+    "bestaudio[ext=m4a]/bestaudio",
+    "bestvideo*+bestaudio/best",   # DASH con remux automático
+    "95", "94", "93", "92", "91",  # HLS mp4 IDs comunes (ajusta según list-formats)
+    "best"                         # último recurso
 ]
+
 
 BASE_YTDL_OPTS = {
     "quiet": True,
