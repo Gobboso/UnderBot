@@ -32,38 +32,37 @@ if not TOKEN:
 with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
-YTDL_FORMAT = "bestaudio[acodec^=opus]/bestaudio/best"
-YTDL_OPTS = {
-    "format": YTDL_FORMAT,
+YTDL_FORMAT_PIPELINE = [
+    "bestaudio[acodec^=opus][abr<=160000]",
+    "bestaudio[acodec^=opus]",
+    "bestaudio/best",
+]
+BASE_YTDL_OPTS = {
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
     "default_search": "auto",
     "extract_flat": False,
     "cachedir": False,
+    "noplaylist": True,
     "source_address": "0.0.0.0",
     "cookiefile": "cookies.txt",
-    
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["web", "android"],
-        }
-    },
-
+    "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
     "prefer_insecure": True,
     "force_ip": "0.0.0.0",
 }
-
-FFMPEG_PROTOCOLS = "file,http,https,tcp,tls,crypto,data"
+FFMPEG_PROTOCOLS = "file,http,https,tcp,tls"
 FFMPEG_BASE_BEFORE = (
-    "-nostdin -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+    "-nostdin -loglevel warning "
+    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
+    "-reconnect_at_eof 1 -reconnect_on_network_error 1 "
     "-rw_timeout 15000000 "
     f'-protocol_whitelist "{FFMPEG_PROTOCOLS}"'
 )
 FFMPEG_BEFORE_OPTS = FFMPEG_BASE_BEFORE
-FFMPEG_HLS_BEFORE = f"{FFMPEG_BASE_BEFORE} -allowed_extensions ALL"
 FFMPEG_OPUS_OPTS = "-vn -compression_level 10 -loglevel warning"
-FFMPEG_PCM_OPTS = "-vn -loglevel warning -threads 1"
+FFMPEG_PCM_OPTS = "-vn -af aresample=48000:async=1:first_pts=0 -threads 1 -loglevel warning"
+FFMPEG_HLS_BEFORE = f"{FFMPEG_BASE_BEFORE} -allowed_extensions ALL"
 FFMPEG_HLS_OPTS = "-vn -loglevel warning"
 YTDL_SEMAPHORE = asyncio.Semaphore(2)
 IDLE_TIMEOUT = 300
@@ -148,8 +147,19 @@ async def run_blocking(func, *args, **kwargs):
 
 
 def _extract_info(query):
-    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
-        return ydl.extract_info(query, download=False)
+    last_error = None
+    for fmt in YTDL_FORMAT_PIPELINE:
+        opts = dict(BASE_YTDL_OPTS)
+        opts["format"] = fmt
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(query, download=False)
+        except DownloadError as error:
+            last_error = error
+            if "Requested format is not available" in str(error):
+                continue
+            raise
+    raise last_error if last_error else RuntimeError("No se pudo extraer el audio.")
 
 
 async def extract_ytdl_info(query):
@@ -532,7 +542,7 @@ async def stop(ctx):
         await ctx.voice_client.disconnect()
         gid = ctx.guild.id
         async with get_lock(gid):
-            queues[gid] = []
+            queues[gig] = []
             set_playing(gid, False)
         cancel_idle_timer(gid)
         await ctx.send("Paré esa vuelta.")
