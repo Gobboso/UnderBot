@@ -33,7 +33,7 @@ with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
 BASE_YTDL_OPTS = {
-    "quiet": True,
+    "quiet": False,
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
@@ -48,7 +48,7 @@ EXTRACTION_STRATEGIES = [
             "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
-        "formats": ["worst"],
+        "formats": ["96", "95", "94", "93", "92", "91", "bestaudio", "best"],
     },
 ]
 
