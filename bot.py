@@ -37,6 +37,8 @@ BASE_YTDL_OPTS = {
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
+    "geo_bypass": True,
+    "nocheckcertificate": True,
 }
 
 EXTRACTION_STRATEGIES = [
@@ -44,23 +46,25 @@ EXTRACTION_STRATEGIES = [
         "name": "web+cookies",
         "opts": {
             "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
+            "extractor_args": {"youtube": {"player_client": ["web"], "skip": ["hls"]}},
         },
-        "formats": ["251/250/249/140/bestaudio", "bestaudio/best", "96/95/94/93/92/91"],
+        "formats": ["251/250/249/140", "bestaudio"],
     },
     {
-        "name": "android",
+        "name": "android+cookies",
         "opts": {
-            "extractor_args": {"youtube": {"player_client": ["android"]}},
+            "cookiefile": "cookies.txt",
+            "extractor_args": {"youtube": {"player_client": ["android"], "skip": ["hls"]}},
         },
-        "formats": ["251/250/249/140/bestaudio", "bestaudio/best"],
+        "formats": ["251/250/249/140", "bestaudio"],
     },
     {
-        "name": "web-sin-cookies",
+        "name": "ios+cookies",
         "opts": {
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
+            "cookiefile": "cookies.txt",
+            "extractor_args": {"youtube": {"player_client": ["ios"], "skip": ["hls"]}},
         },
-        "formats": ["bestaudio/best", "96/95/94/93/92/91"],
+        "formats": ["bestaudio/best"],
     },
 ]
 
