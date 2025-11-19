@@ -177,6 +177,7 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
             try:
                 info = await extract_ytdl_info(url_base, format_string=fmt, extra_opts=extra_opts)
                 if not info or not isinstance(info, dict):
+                    print(f"  -> Formato {fmt}: no devolvió dict")
                     continue
                 
                 url = info.get("url")
@@ -188,8 +189,9 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
                     print(f"✓ Éxito: {strategy_name} + {fmt}")
                     return url, title
                 else:
-                    print(f"  -> Formato {fmt}: sin URL. Keys: {list(info.keys())[:5]}")
-            except Exception:
+                    print(f"  -> Formato {fmt}: sin URL. Keys: {list(info.keys())[:10]}")
+            except Exception as e:
+                print(f"  -> Formato {fmt}: excepción {type(e).__name__}: {str(e)[:80]}")
                 continue
     
     if title_hint and not get_url_only:
