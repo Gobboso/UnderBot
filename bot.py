@@ -192,7 +192,8 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
     
     if title_hint and not get_url_only:
         try:
-            alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
+            search_opts = {"cookiefile": "cookies.txt"}
+            alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}", extra_opts=search_opts)
             if isinstance(alt_info, dict):
                 entries = alt_info.get("entries", [])
                 if entries and isinstance(entries[0], dict):
@@ -207,7 +208,8 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
 
 
 async def buscar_en_youtube(query):
-    info = await extract_ytdl_info(f"ytsearch1:{query}")
+    search_opts = {"cookiefile": "cookies.txt"}
+    info = await extract_ytdl_info(f"ytsearch1:{query}", extra_opts=search_opts)
     if not isinstance(info, dict):
         raise ValueError("❌ Error en la búsqueda.")
     entries = info.get("entries")
@@ -230,7 +232,8 @@ async def fetch_playlist_entries(raw_url):
     if not playlist_id:
         raise ValueError("❌ No reconocí esa playlist.")
     base = "https://music.youtube.com" if "music.youtube.com" in raw_url else "https://www.youtube.com"
-    info = await extract_ytdl_info(f"{base}/playlist?list={playlist_id}")
+    playlist_opts = {"cookiefile": "cookies.txt"}
+    info = await extract_ytdl_info(f"{base}/playlist?list={playlist_id}", extra_opts=playlist_opts)
     if not isinstance(info, dict):
         raise ValueError("❌ Error cargando playlist.")
     entries = info.get("entries") or []
