@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-web3
+discord.py[voice]
+PyNaCl
 python-dotenv
-requests
+spotipy 
 yt-dlp
+requests
