@@ -36,12 +36,12 @@ YTDL_FORMAT_PIPELINE = [
     "bestaudio[acodec^=opus]/bestaudio",
     "bestaudio[ext=m4a]/bestaudio",
     "bestvideo*+bestaudio/best",
-    "96/mp4",
-    "95/mp4",
-    "94/mp4",
-    "93/mp4",
-    "92/mp4",
-    "91/mp4",
+    "96",
+    "95",
+    "94",
+    "93",
+    "92",
+    "91",
     "best"
 ]
 
@@ -559,7 +559,7 @@ async def stop(ctx):
         await ctx.voice_client.disconnect()
         gid = ctx.guild.id
         async with get_lock(gid):
-            queues[gig] = []
+            queues[gid] = []
             set_playing(gid, False)
         cancel_idle_timer(gid)
         await ctx.send("Paré esa vuelta.")
