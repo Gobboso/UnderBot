@@ -44,21 +44,30 @@ BASE_YTDL_OPTS = {
 
 EXTRACTION_STRATEGIES = [
     {
-        "name": "ios_client",
+        "name": "android_ipv6",
         "opts": {
             "cookiefile": "cookies.txt",
-            # El cliente iOS suele ser menos estricto con la verificación de bots
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        },
+        # [protocol^=http] obliga a que sea descarga directa (no m3u8)
+        "formats": ["bestaudio[protocol^=http]/bestaudio"], 
+    },
+    {
+        "name": "ios_backup",
+        "opts": {
+            "cookiefile": "cookies.txt",
             "extractor_args": {"youtube": {"player_client": ["ios"]}},
         },
-        "formats": ["bestaudio/best"],
+        # Intentamos evitar m3u8 tambien en iOS
+        "formats": ["bestaudio[protocol^=http]/best"],
     },
 ]
 
 FFMPEG_BEFORE_OPTS = (
     '-nostdin -reconnect 1 -reconnect_streamed 1 '
-    '-reconnect_delay_max 5 -rw_timeout 15000000 '
+    '-reconnect_delay_max 5 -rw_timeout 20000000 '
     '-protocol_whitelist "file,http,https,tcp,tls,crypto" '
-    '-headers "Referer: https://www.youtube.com/" ' 
+    '-headers "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" '
     '-http_persistent 0'
 )
 # He eliminado la línea '-user_agent ...' para evitar conflictos de huella digital
