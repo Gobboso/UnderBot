@@ -169,6 +169,8 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None):
 
 async def buscar_en_youtube(query):
     info = await extract_ytdl_info(f"ytsearch1:{query}")
+    if not isinstance(info, dict):
+        raise ValueError("❌ Error en la búsqueda.")
     entries = info.get("entries")
     if not entries:
         raise ValueError("❌ No encontré resultados.")
@@ -190,6 +192,8 @@ async def fetch_playlist_entries(raw_url):
         raise ValueError("❌ No reconocí esa playlist.")
     base = "https://music.youtube.com" if "music.youtube.com" in raw_url else "https://www.youtube.com"
     info = await extract_ytdl_info(f"{base}/playlist?list={playlist_id}")
+    if not isinstance(info, dict):
+        raise ValueError("❌ Error cargando playlist.")
     entries = info.get("entries") or []
     return [
         {"id": e.get("id"), "title": e.get("title", "Audio"), "source": None}
