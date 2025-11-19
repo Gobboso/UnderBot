@@ -194,7 +194,7 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
                 print(f"  -> Formato {fmt}: excepción {type(e).__name__}: {str(e)[:80]}")
                 continue
     
-    if title_hint and not get_url_only:
+    if title_hint:
         try:
             search_opts = {"cookiefile": "cookies.txt"}
             alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}", extra_opts=search_opts)
@@ -207,6 +207,8 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
                     alt_title = entry.get("title", "Audio")
                     if alt_url:
                         print(f"✓ Éxito desde búsqueda alternativa")
+                        if get_url_only:
+                            return alt_url
                         return alt_url, alt_title
         except Exception as e:
             print(f"Error en búsqueda alternativa: {e}")
