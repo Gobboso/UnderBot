@@ -33,7 +33,7 @@ with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
 YTDL_OPTS = {
-    "format": "96/95/94/93/92/91/251/250/249/140/bestaudio/best",
+    "format": "(bestvideo[height<=720]+bestaudio)/best",
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
