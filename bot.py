@@ -45,6 +45,7 @@ FORMAT_ATTEMPTS = [
     "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
     "bestaudio/best",
     "96/95/94/93/92/91",
+    None,
 ]
 
 FFMPEG_BEFORE_OPTS = (
@@ -155,24 +156,31 @@ async def extract_ytdl_info(query, format_string=None):
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     url_base = f"https://www.youtube.com/watch?v={video_id}"
     
-    for fmt in FORMAT_ATTEMPTS:
+    for i, fmt in enumerate(FORMAT_ATTEMPTS):
         try:
+            fmt_name = fmt if fmt else "auto"
+            print(f"Intentando formato {i+1}/{len(FORMAT_ATTEMPTS)}: {fmt_name}")
             info = await extract_ytdl_info(url_base, format_string=fmt)
             if not info or not isinstance(info, dict):
+                print(f"  -> No devolvió dict")
                 continue
             
             url = info.get("url")
             title = info.get("title", "Audio")
             
             if url:
+                print(f"  -> ✓ Éxito con formato {fmt_name}")
                 return url, title
+            else:
+                print(f"  -> No hay URL en la respuesta")
         except Exception as error:
-            print(f"Formato {fmt} falló: {error}")
+            print(f"  -> Error: {str(error)[:100]}")
             continue
     
     print(f"Todos los formatos fallaron para {video_id}")
     if title_hint:
         try:
+            print(f"Intentando búsqueda alternativa: {title_hint}")
             alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
             if isinstance(alt_info, dict):
                 entries = alt_info.get("entries", [])
@@ -180,6 +188,7 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None):
                     alt_id = entries[0].get("id")
                     if alt_id and alt_id != video_id:
                         alt_title = entries[0].get("title")
+                        print(f"  -> Encontrado alternativo: {alt_id}")
                         return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
         except Exception as e2:
             print(f"Error en búsqueda alternativa: {e2}")
