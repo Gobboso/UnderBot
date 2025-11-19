@@ -32,55 +32,22 @@ if not TOKEN:
 with open("radios.json", "r", encoding="utf-8") as file:
     RADIOS = json.load(file)
 
-YTDL_FORMAT_PIPELINE = [
-    "96",   # HLS mp4 1080p (primero porque existe)
-    "95",   # HLS mp4 720p
-    "94",   # HLS mp4 480p
-    "93",   # HLS mp4 360p
-    "92",   # HLS mp4 240p
-    "91",   # HLS mp4 144p
-    "251",  # Opus 160kbps (para videos normales)
-    "250",  # Opus 70kbps
-    "249",  # Opus 50kbps
-    "140",  # M4A 128kbps
-    "bestaudio/best"
-]
-
-BASE_YTDL_OPTS = {
+YTDL_OPTS = {
+    "format": "96/95/94/93/92/91/251/250/249/140/bestaudio/best",
     "quiet": True,
     "no_warnings": True,
     "skip_download": True,
-    "default_search": "auto",
-    "extract_flat": False,
-    "cachedir": False,
     "noplaylist": True,
-    "source_address": "0.0.0.0",
     "cookiefile": "cookies.txt",
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"],
-            "player_skip": ["configs"]
-        }
-    },
-    "prefer_insecure": True,
-    "force_ip": "0.0.0.0",
+    "extractor_args": {"youtube": {"player_client": ["android"]}},
 }
 
-FFMPEG_PROTOCOLS = "file,http,https,tcp,tls"
-FFMPEG_BASE_BEFORE = (
-    "-nostdin -loglevel warning "
-    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 "
-    "-reconnect_at_eof 1 -reconnect_on_network_error 1 "
-    "-rw_timeout 15000000 "
-    f'-protocol_whitelist \"{FFMPEG_PROTOCOLS}\"'
+FFMPEG_BEFORE_OPTS = (
+    "-nostdin -reconnect 1 -reconnect_streamed 1 "
+    "-reconnect_delay_max 5 -rw_timeout 15000000"
 )
-
-FFMPEG_HLS_BEFORE = f"{FFMPEG_BASE_BEFORE} -allowed_extensions ALL"
-FFMPEG_BEFORE_OPTS = FFMPEG_HLS_BEFORE
-
-FFMPEG_OPUS_OPTS = "-vn -compression_level 10 -loglevel warning"
-FFMPEG_PCM_OPTS = "-vn -af aresample=48000:async=1:first_pts=0 -threads 1 -loglevel warning"
-FFMPEG_HLS_OPTS = "-vn -loglevel warning"
+FFMPEG_OPUS_OPTS = "-vn -loglevel warning"
+FFMPEG_PCM_OPTS = "-vn -loglevel warning"
 
 YTDL_SEMAPHORE = asyncio.Semaphore(2)
 IDLE_TIMEOUT = 300
@@ -165,19 +132,8 @@ async def run_blocking(func, *args, **kwargs):
 
 
 def _extract_info(query):
-    last_error = None
-    for fmt in YTDL_FORMAT_PIPELINE:
-        opts = dict(BASE_YTDL_OPTS)
-        opts["format"] = fmt
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(query, download=False)
-        except DownloadError as error:
-            last_error = error
-            if "Requested format is not available" in str(error):
-                continue
-            raise
-    raise last_error if last_error else RuntimeError("No se pudo extraer el audio.")
+    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
+        return ydl.extract_info(query, download=False)
 
 
 async def extract_ytdl_info(query):
@@ -185,56 +141,29 @@ async def extract_ytdl_info(query):
         return await run_blocking(_extract_info, query)
 
 
-async def _probe_stream_candidates(candidates):
-    last_error = None
-    for target in candidates:
-        try:
-            info = await extract_ytdl_info(target)
-        except DownloadError as error:
-            last_error = error
-            continue
-        url = info.get("url")
-        if url:
-            return url, info.get("title", "Audio")
-    if last_error:
-        print("Error obteniendo audio con yt-dlp:", last_error)
-    return None, None
-
-
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
-    candidates = [
-        f"https://www.youtube.com/watch?v={video_id}",
-        f"https://music.youtube.com/watch?v={video_id}",
-    ]
-    stream, title = await _probe_stream_candidates(candidates)
-    if stream:
-        return stream, title
-    if title_hint:
-        alt_id, alt_title = await buscar_en_youtube(title_hint)
-        if alt_id and alt_id != video_id:
-            return await obtener_audio_reproducible(
-                alt_id,
-                title_hint=alt_title or title_hint,
-            )
-    return None, None
-
-
-async def obtener_audio_soundcloud(track_url):
     try:
-        info = await extract_ytdl_info(track_url)
+        info = await extract_ytdl_info(f"https://www.youtube.com/watch?v={video_id}")
+        return info.get("url"), info.get("title", "Audio")
     except Exception as error:
-        print("Error SoundCloud:", error)
+        print(f"Error obteniendo audio: {error}")
+        if title_hint:
+            try:
+                alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
+                entries = alt_info.get("entries")
+                if entries and entries[0].get("id") != video_id:
+                    return await obtener_audio_reproducible(entries[0]["id"])
+            except Exception:
+                pass
         return None, None
-    return info.get("url"), info.get("title", "Audio")
 
 
 async def buscar_en_youtube(query):
     info = await extract_ytdl_info(f"ytsearch1:{query}")
     entries = info.get("entries")
     if not entries:
-        raise ValueError("❌ No encontré resultados en YouTube.")
-    first = entries[0]
-    return first.get("id"), first.get("title", query)
+        raise ValueError("❌ No encontré resultados.")
+    return entries[0].get("id"), entries[0].get("title", query)
 
 
 def extract_playlist_id(url):
@@ -243,59 +172,26 @@ def extract_playlist_id(url):
         params = parse_qs(parsed.query)
         if "list" in params:
             return params["list"][0]
-    if "list=" in url:
-        return url.split("list=")[-1].split("&")[0]
     return None
-
-
-def build_playlist_url(playlist_id, source_url):
-    base = (
-        "https://music.youtube.com/playlist?list="
-        if source_url and "music.youtube.com" in source_url
-        else "https://www.youtube.com/playlist?list="
-    )
-    return f"{base}{playlist_id}"
 
 
 async def fetch_playlist_entries(raw_url):
     playlist_id = extract_playlist_id(raw_url)
     if not playlist_id:
         raise ValueError("❌ No reconocí esa playlist.")
-    info = await extract_ytdl_info(build_playlist_url(playlist_id, raw_url))
+    base = "https://music.youtube.com" if "music.youtube.com" in raw_url else "https://www.youtube.com"
+    info = await extract_ytdl_info(f"{base}/playlist?list={playlist_id}")
     entries = info.get("entries") or []
-    tracks = [
-        {"id": entry.get("id"), "title": entry.get("title") or "Audio", "source": None}
-        for entry in entries
-        if entry.get("id")
+    return [
+        {"id": e.get("id"), "title": e.get("title", "Audio"), "source": None}
+        for e in entries if e.get("id")
     ]
-    if not tracks:
-        raise ValueError("❌ La playlist no tiene canciones válidas.")
-    return tracks
-
-
-def is_hls_stream(url: str) -> bool:
-    if not url:
-        return False
-    lowered = url.lower()
-    return (
-        ".m3u8" in lowered
-        or "cf-hls" in lowered
-        or "playlist.m3u8" in lowered
-        or "/playlist/" in lowered
-    )
 
 
 async def build_audio_source(stream_url):
-    if is_hls_stream(stream_url):
-        return FFmpegPCMAudio(
-            stream_url,
-            before_options=FFMPEG_HLS_BEFORE,
-            options=FFMPEG_HLS_OPTS,
-        )
     try:
         return await FFmpegOpusAudio.from_probe(
             stream_url,
-            method="fallback",
             before_options=FFMPEG_BEFORE_OPTS,
             options=FFMPEG_OPUS_OPTS,
         )
@@ -313,10 +209,6 @@ def parse_youtube_id(raw_url):
     if "youtu.be/" in raw_url:
         return raw_url.rsplit("/", 1)[-1].split("?")[0]
     return None
-
-
-def is_soundcloud_url(text):
-    return "soundcloud.com" in text
 
 
 async def play_next(ctx):
@@ -338,22 +230,13 @@ async def play_next(ctx):
             schedule_idle_timer(ctx)
             await ctx.send("Necesito un canal de voz para seguir.")
             return
-        voice = await ctx.author.voice.channel.connect(
-            self_deaf=True,
-            self_mute=False,
-        )
+        voice = await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
     await ensure_deafened(voice)
 
     stream_url = item.get("source")
-    if stream_url is None:
-        if item.get("provider") == "soundcloud":
-            stream_url, _ = await obtener_audio_soundcloud(item["id"])
-        else:
-            stream_url, _ = await obtener_audio_reproducible(
-                item["id"],
-                title_hint=item["title"],
-            )
-        if stream_url is None:
+    if not stream_url:
+        stream_url, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
+        if not stream_url:
             await ctx.send("❌ Error con la canción, saltando.")
             return await play_next(ctx)
 
@@ -366,9 +249,7 @@ async def play_next(ctx):
     def _after_playback(ffmpeg_error):
         if ffmpeg_error:
             print(f"FFmpeg error: {ffmpeg_error}")
-        bot.loop.call_soon_threadsafe(
-            lambda: asyncio.create_task(play_next(ctx))
-        )
+        bot.loop.call_soon_threadsafe(lambda: asyncio.create_task(play_next(ctx)))
 
     voice.play(audio_source, after=_after_playback)
     await ctx.send(f"▶️ **Reproduciendo:** {item['title']}")
@@ -381,7 +262,7 @@ async def on_ready():
 
 @bot.command()
 async def emisoras(ctx):
-    lista = "\n".join([f"• **{nombre}**" for nombre in RADIOS])
+    lista = "\n".join([f"• **{n}**" for n in RADIOS])
     await ctx.send(f"**Tenemos:**\n{lista}")
 
 
@@ -393,20 +274,12 @@ async def radio(ctx, emisora: str):
     if not ctx.author.voice:
         return await ctx.send("Métete a un canal de voz primero.")
 
-    voice = ctx.voice_client
-    if not voice:
-        voice = await ctx.author.voice.channel.connect(
-            self_deaf=True,
-            self_mute=False,
-        )
+    voice = ctx.voice_client or await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
     await ensure_deafened(voice)
     cancel_idle_timer(ctx.guild.id)
-
     if voice.is_playing():
         voice.stop()
-
-    source = await build_audio_source(RADIOS[emisora])
-    voice.play(source)
+    voice.play(await build_audio_source(RADIOS[emisora]))
     await ctx.send(f"📻 Sonando **{emisora}**")
 
 
@@ -417,59 +290,26 @@ async def play(ctx, *, search: str):
         return await ctx.send("Métete a un canal de voz primero.")
 
     query = search.strip()
-    playlist_entries = None
 
     if query.startswith("http") and extract_playlist_id(query):
         try:
             playlist_entries = await fetch_playlist_entries(query)
         except ValueError as error:
             return await ctx.send(str(error))
-        except Exception as error:
-            return await ctx.send(f"❌ Error leyendo la playlist: {error}")
-
-    if playlist_entries:
-        first_entry = playlist_entries[0]
-        stream_url, resolved_title = await obtener_audio_reproducible(
-            first_entry["id"],
-            title_hint=first_entry["title"],
-        )
-        if not stream_url:
-            return await ctx.send("❌ No pude preparar la primera canción.")
-        first_entry["source"] = stream_url
-        if resolved_title:
-            first_entry["title"] = resolved_title
-        added = len(playlist_entries)
-        async with get_lock(gid):
-            queue = get_queue(gid)
-            queue.extend(playlist_entries)
-            cancel_idle_timer(gid)
-            if not get_playing(gid):
-                bot.loop.create_task(play_next(ctx))
-        return await ctx.send(
-            f"📃 Playlist añadida ({added} temas). "
-            f"▶️ Sonando ahora: **{first_entry['title']}**"
-        )
-
-    if query.startswith("http") and is_soundcloud_url(query):
-        stream_url, title = await obtener_audio_soundcloud(query)
-        if not stream_url:
-            return await ctx.send("❌ No pude preparar esa canción de SoundCloud.")
-        async with get_lock(gid):
-            queue = get_queue(gid)
-            queue.append(
-                {
-                    "id": query,
-                    "title": title or "SoundCloud",
-                    "source": stream_url,
-                    "provider": "soundcloud",
-                }
-            )
-            cancel_idle_timer(gid)
-            if not get_playing(gid):
-                bot.loop.create_task(play_next(ctx))
-            else:
-                await ctx.send(f"➕ **Añadida a la cola:** {title or 'SoundCloud'}")
-        return
+        if playlist_entries:
+            first = playlist_entries[0]
+            stream_url, title = await obtener_audio_reproducible(first["id"], title_hint=first["title"])
+            if not stream_url:
+                return await ctx.send("❌ No pude preparar la primera canción.")
+            first["source"] = stream_url
+            if title:
+                first["title"] = title
+            async with get_lock(gid):
+                get_queue(gid).extend(playlist_entries)
+                cancel_idle_timer(gid)
+                if not get_playing(gid):
+                    bot.loop.create_task(play_next(ctx))
+            return await ctx.send(f"📃 Playlist añadida ({len(playlist_entries)} temas).")
 
     video_id = parse_youtube_id(query)
     title = None
@@ -479,55 +319,36 @@ async def play(ctx, *, search: str):
             video_id, title = await buscar_en_youtube(query)
         except ValueError as error:
             return await ctx.send(str(error))
-        except Exception as error:
-            return await ctx.send(f"❌ Error buscando en YouTube: {error}")
 
     if not video_id:
-        return await ctx.send("❌ No encontré resultados en YouTube.")
+        return await ctx.send("❌ No encontré resultados.")
 
-    stream_url, resolved_title = await obtener_audio_reproducible(
-        video_id,
-        title_hint=title or query,
-    )
+    stream_url, resolved_title = await obtener_audio_reproducible(video_id, title_hint=title or query)
     if not stream_url:
         return await ctx.send("❌ No pude preparar esa canción.")
-    if resolved_title:
-        title = resolved_title
-    display_title = title or query
 
+    display_title = resolved_title or title or query
     async with get_lock(gid):
-        queue = get_queue(gid)
-        queue.append(
-            {
-                "id": video_id,
-                "title": display_title,
-                "source": stream_url,
-            }
-        )
+        get_queue(gid).append({"id": video_id, "title": display_title, "source": stream_url})
         cancel_idle_timer(gid)
         if not get_playing(gid):
             bot.loop.create_task(play_next(ctx))
         else:
-            await ctx.send(f"➕ **Añadida a la cola:** {display_title}")
+            await ctx.send(f"➕ **Añadida:** {display_title}")
 
 
 @bot.command()
 async def queue(ctx):
-    gid = ctx.guild.id
-    q = get_queue(gid)
+    q = get_queue(ctx.guild.id)
     if not q:
         return await ctx.send("La cola está vacía.")
-    texto = "\n".join(
-        [f"{idx + 1}. {item['title']}" for idx, item in enumerate(q)]
-    )
-    await ctx.send(f"📝 **Cola:**\n{texto}")
+    await ctx.send("📝 **Cola:**\n" + "\n".join([f"{i+1}. {item['title']}" for i, item in enumerate(q)]))
 
 
 @bot.command()
 async def skip(ctx):
-    voice = ctx.voice_client
-    if voice and voice.is_playing():
-        voice.stop()
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.stop()
         await ctx.send("⏭️ Saltando...")
     else:
         await ctx.send("No hay nada sonando.")
@@ -535,9 +356,8 @@ async def skip(ctx):
 
 @bot.command()
 async def pause(ctx):
-    voice = ctx.voice_client
-    if voice and voice.is_playing():
-        voice.pause()
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.pause()
         await ctx.send("⏸️ Pausado.")
     else:
         await ctx.send("Nada para pausar.")
@@ -545,9 +365,8 @@ async def pause(ctx):
 
 @bot.command()
 async def resume(ctx):
-    voice = ctx.voice_client
-    if voice and voice.is_paused():
-        voice.resume()
+    if ctx.voice_client and ctx.voice_client.is_paused():
+        ctx.voice_client.resume()
         cancel_idle_timer(ctx.guild.id)
         await ctx.send("▶️ Reanudado.")
     else:
@@ -578,7 +397,7 @@ async def remove_queue_entry(ctx, index: int):
         if index < 1 or index > len(queue):
             return await ctx.send("Número fuera de rango.")
         removed = queue.pop(index - 1)
-    await ctx.send(f"🗑️ Eliminada de la cola: {removed['title']}")
+    await ctx.send(f"🗑️ Eliminada: {removed['title']}")
 
 
 @bot.command(name="clearqueue", aliases=("clearq", "clear"))
@@ -593,7 +412,7 @@ async def clear_queue(ctx):
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.stop()
     cancel_idle_timer(gid)
-    await ctx.send("🗂️ Cola eliminada por completo.")
+    await ctx.send("🗂️ Cola eliminada.")
 
 
 bot.run(TOKEN)
