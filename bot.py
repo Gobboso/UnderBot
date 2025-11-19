@@ -46,25 +46,25 @@ EXTRACTION_STRATEGIES = [
         "name": "web+cookies",
         "opts": {
             "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["web"], "skip": ["hls"]}},
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
         },
-        "formats": ["251/250/249/140", "bestaudio"],
+        "formats": ["251/250/249/140", "bestaudio", "91"],
     },
     {
         "name": "android+cookies",
         "opts": {
             "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["android"], "skip": ["hls"]}},
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
         },
-        "formats": ["251/250/249/140", "bestaudio"],
+        "formats": ["bestaudio", "91"],
     },
     {
         "name": "ios+cookies",
         "opts": {
             "cookiefile": "cookies.txt",
-            "extractor_args": {"youtube": {"player_client": ["ios"], "skip": ["hls"]}},
+            "extractor_args": {"youtube": {"player_client": ["ios"]}},
         },
-        "formats": ["bestaudio/best"],
+        "formats": ["bestaudio", "91"],
     },
 ]
 
@@ -175,7 +175,7 @@ async def extract_ytdl_info(query, format_string=None, extra_opts=None):
         return await run_blocking(_extract_info, query, format_string, extra_opts)
 
 
-async def obtener_audio_reproducible(video_id, *, title_hint=None):
+async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=False):
     url_base = f"https://www.youtube.com/watch?v={video_id}"
     
     for strategy in EXTRACTION_STRATEGIES:
@@ -183,7 +183,6 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None):
         extra_opts = strategy["opts"]
         formats = strategy["formats"]
         
-        print(f"Probando estrategia: {strategy_name}")
         for fmt in formats:
             try:
                 info = await extract_ytdl_info(url_base, format_string=fmt, extra_opts=extra_opts)
@@ -194,15 +193,15 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None):
                 title = info.get("title", "Audio")
                 
                 if url:
-                    print(f"  -> ✓ Éxito: {strategy_name} + formato {fmt}")
+                    if get_url_only:
+                        return url
+                    print(f"✓ Éxito: {strategy_name} + {fmt}")
                     return url, title
-            except Exception as error:
+            except Exception:
                 continue
     
-    print(f"Todas las estrategias fallaron para {video_id}")
-    if title_hint:
+    if title_hint and not get_url_only:
         try:
-            print(f"Intentando búsqueda alternativa: {title_hint}")
             alt_info = await extract_ytdl_info(f"ytsearch1:{title_hint}")
             if isinstance(alt_info, dict):
                 entries = alt_info.get("entries", [])
@@ -210,12 +209,11 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None):
                     alt_id = entries[0].get("id")
                     if alt_id and alt_id != video_id:
                         alt_title = entries[0].get("title")
-                        print(f"  -> Encontrado alternativo: {alt_id}")
                         return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
-        except Exception as e2:
-            print(f"Error en búsqueda alternativa: {e2}")
+        except Exception:
+            pass
     
-    return None, None
+    return None if get_url_only else (None, None)
 
 
 async def buscar_en_youtube(query):
@@ -247,7 +245,7 @@ async def fetch_playlist_entries(raw_url):
         raise ValueError("❌ Error cargando playlist.")
     entries = info.get("entries") or []
     return [
-        {"id": e.get("id"), "title": e.get("title", "Audio"), "source": None}
+        {"id": e.get("id"), "title": e.get("title", "Audio")}
         for e in entries if e.get("id")
     ]
 
@@ -303,12 +301,11 @@ async def play_next(ctx):
         voice = await ctx.author.voice.channel.connect(self_deaf=True, self_mute=False)
     await ensure_deafened(voice)
 
-    stream_url = item.get("source")
+    # Siempre obtener URL fresca para evitar expiración de HLS
+    stream_url = await obtener_audio_reproducible(item["id"], title_hint=item["title"], get_url_only=True)
     if not stream_url:
-        stream_url, _ = await obtener_audio_reproducible(item["id"], title_hint=item["title"])
-        if not stream_url:
-            await ctx.send("❌ Error con la canción, saltando.")
-            return await play_next(ctx)
+        await ctx.send("❌ Error con la canción, saltando.")
+        return await play_next(ctx)
 
     try:
         audio_source = await build_audio_source(stream_url)
@@ -392,13 +389,14 @@ async def play(ctx, *, search: str):
     if not video_id:
         return await ctx.send("❌ No encontré resultados.")
 
-    stream_url, resolved_title = await obtener_audio_reproducible(video_id, title_hint=title or query)
-    if not stream_url:
+    result = await obtener_audio_reproducible(video_id, title_hint=title or query)
+    if not result or not result[0]:
         return await ctx.send("❌ No pude preparar esa canción.")
-
+    
+    _, resolved_title = result
     display_title = resolved_title or title or query
     async with get_lock(gid):
-        get_queue(gid).append({"id": video_id, "title": display_title, "source": None})
+        get_queue(gid).append({"id": video_id, "title": display_title})
         cancel_idle_timer(gid)
         if not get_playing(gid):
             bot.loop.create_task(play_next(ctx))
