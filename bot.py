@@ -201,12 +201,15 @@ async def obtener_audio_reproducible(video_id, *, title_hint=None, get_url_only=
             if isinstance(alt_info, dict):
                 entries = alt_info.get("entries", [])
                 if entries and isinstance(entries[0], dict):
-                    alt_id = entries[0].get("id")
-                    if alt_id and alt_id != video_id:
-                        alt_title = entries[0].get("title")
-                        return await obtener_audio_reproducible(alt_id, title_hint=alt_title)
-        except Exception:
-            pass
+                    entry = entries[0]
+                    # Usar directamente la URL del resultado de búsqueda
+                    alt_url = entry.get("url")
+                    alt_title = entry.get("title", "Audio")
+                    if alt_url:
+                        print(f"✓ Éxito desde búsqueda alternativa")
+                        return alt_url, alt_title
+        except Exception as e:
+            print(f"Error en búsqueda alternativa: {e}")
     
     return None if get_url_only else (None, None)
 
