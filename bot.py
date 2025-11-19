@@ -37,15 +37,31 @@ BASE_YTDL_OPTS = {
     "no_warnings": True,
     "skip_download": True,
     "noplaylist": True,
-    "cookiefile": "cookies.txt",
-    "extractor_args": {"youtube": {"player_client": ["web"]}},
 }
 
-FORMAT_ATTEMPTS = [
-    "251/250/249/140/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
-    "bestaudio/best",
-    "96/95/94/93/92/91",
-    None,
+EXTRACTION_STRATEGIES = [
+    {
+        "name": "web+cookies",
+        "opts": {
+            "cookiefile": "cookies.txt",
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
+        },
+        "formats": ["251/250/249/140/bestaudio", "bestaudio/best", "96/95/94/93/92/91"],
+    },
+    {
+        "name": "android",
+        "opts": {
+            "extractor_args": {"youtube": {"player_client": ["android"]}},
+        },
+        "formats": ["251/250/249/140/bestaudio", "bestaudio/best"],
+    },
+    {
+        "name": "web-sin-cookies",
+        "opts": {
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
+        },
+        "formats": ["bestaudio/best", "96/95/94/93/92/91"],
+    },
 ]
 
 FFMPEG_BEFORE_OPTS = (
@@ -140,44 +156,46 @@ async def run_blocking(func, *args, **kwargs):
     return await loop.run_in_executor(None, partial(func, *args, **kwargs))
 
 
-def _extract_info(query, format_string=None):
+def _extract_info(query, format_string=None, extra_opts=None):
     opts = BASE_YTDL_OPTS.copy()
+    if extra_opts:
+        opts.update(extra_opts)
     if format_string:
         opts["format"] = format_string
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(query, download=False)
 
 
-async def extract_ytdl_info(query, format_string=None):
+async def extract_ytdl_info(query, format_string=None, extra_opts=None):
     async with YTDL_SEMAPHORE:
-        return await run_blocking(_extract_info, query, format_string)
+        return await run_blocking(_extract_info, query, format_string, extra_opts)
 
 
 async def obtener_audio_reproducible(video_id, *, title_hint=None):
     url_base = f"https://www.youtube.com/watch?v={video_id}"
     
-    for i, fmt in enumerate(FORMAT_ATTEMPTS):
-        try:
-            fmt_name = fmt if fmt else "auto"
-            print(f"Intentando formato {i+1}/{len(FORMAT_ATTEMPTS)}: {fmt_name}")
-            info = await extract_ytdl_info(url_base, format_string=fmt)
-            if not info or not isinstance(info, dict):
-                print(f"  -> No devolvió dict")
+    for strategy in EXTRACTION_STRATEGIES:
+        strategy_name = strategy["name"]
+        extra_opts = strategy["opts"]
+        formats = strategy["formats"]
+        
+        print(f"Probando estrategia: {strategy_name}")
+        for fmt in formats:
+            try:
+                info = await extract_ytdl_info(url_base, format_string=fmt, extra_opts=extra_opts)
+                if not info or not isinstance(info, dict):
+                    continue
+                
+                url = info.get("url")
+                title = info.get("title", "Audio")
+                
+                if url:
+                    print(f"  -> ✓ Éxito: {strategy_name} + formato {fmt}")
+                    return url, title
+            except Exception as error:
                 continue
-            
-            url = info.get("url")
-            title = info.get("title", "Audio")
-            
-            if url:
-                print(f"  -> ✓ Éxito con formato {fmt_name}")
-                return url, title
-            else:
-                print(f"  -> No hay URL en la respuesta")
-        except Exception as error:
-            print(f"  -> Error: {str(error)[:100]}")
-            continue
     
-    print(f"Todos los formatos fallaron para {video_id}")
+    print(f"Todas las estrategias fallaron para {video_id}")
     if title_hint:
         try:
             print(f"Intentando búsqueda alternativa: {title_hint}")
